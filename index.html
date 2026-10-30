@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI LKPD Generator</title>
+    <!-- Memuat Tailwind CSS untuk utilitas styling responsif -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Memuat Phosphor Icons untuk ikon UI -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Memuat Marked.js untuk parsing Markdown dari output Gemini AI ke HTML -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- TAMBAHAN: Memuat KaTeX untuk me-render rumus matematika agar simbol $ hilang dan menjadi estetik -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+    <script>
+        const manifestJSON = {
+            "name": "AI LKPD Generator",
+            "short_name": "AI LKPD",
+            "start_url": ".",
+            "display": "standalone",
+            "background_color": "#ffffff",
+            "theme_color": "#ffffff",
+            "icons": [{
+                "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>",
+                "sizes": "192x192",
+                "type": "image/svg+xml"
+            }]
+        };
+        const manifestBlob = new Blob([JSON.stringify(manifestJSON)], { type: 'application/json' });
+        const manifestURL = URL.createObjectURL(manifestBlob);
+        document.write(`<link rel="manifest" href="${manifestURL}">`);
+    </script>
+
+    <style>
+        /* Mengoverride tampilan Blogger untuk menjadikannya WebApp layar penuh */
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden; /* Mencegah scroll pada body utama */
+        }
+        
+        #app-root {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 999999;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+            display: flex; flex-direction: column;
+        }
+
+        /* Utilitas Glassmorphism */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+        }
+        
+        .glass-input {
+            background: rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            transition: all 0.3s ease;
+        }
+        .glass-input:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Layout Responsif */
+        .app-layout { display: flex; height: 100%; width: 100%; overflow: hidden; }
+        .sidebar { width: 280px; height: 100%; display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,0.6); transition: all 0.3s ease; }
+        .main-content { flex: 1; height: 100%; overflow-y: auto; position: relative; padding-bottom: 80px; }
+
+        .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 20px; color: #4b5563; border-radius: 12px; margin-bottom: 8px; transition: all 0.2s ease; cursor: pointer; }
+        .nav-item:hover, .nav-item.active { background: rgba(255, 255, 255, 0.9); color: #2563eb; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+
+        .bottom-nav { display: none; position: absolute; bottom: 0; left: 0; width: 100%; border-top: 1px solid rgba(255,255,255,0.6); padding: 8px 16px; justify-content: space-around; z-index: 50; }
+        .bottom-nav .nav-item { flex-direction: column; gap: 4px; padding: 8px; margin: 0; font-size: 0.75rem; border-radius: 16px; }
+        .bottom-nav .nav-item i { font-size: 1.5rem; }
+
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .bottom-nav { display: flex; }
+            .main-content { padding-bottom: 90px; }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Markdown Output Styling (Desain Modern Web Preview) */
+        .markdown-body { font-family: 'Inter', sans-serif; color: #334155; line-height: 1.6; }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3 { font-weight: 700; color: #0f172a; margin-top: 1.5em; margin-bottom: 0.5em; }
+        .markdown-body h1 { font-size: 1.75em; text-align: center; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5em; margin-bottom: 1em; }
+        .markdown-body h2 { font-size: 1.25em; color: #2563eb; border-left: 4px solid #3b82f6; padding-left: 12px; background: #eff6ff; padding-block: 6px; border-radius: 0 8px 8px 0; }
+        .markdown-body h3 { font-size: 1.1em; color: #334155; }
+        .markdown-body p { margin-bottom: 1em; text-align: justify; }
+        .markdown-body ul, .markdown-body ol { margin-bottom: 1em; padding-left: 2em; }
+        .markdown-body ul { list-style-type: disc; }
+        .markdown-body ol { list-style-type: decimal; }
+        .markdown-body li { margin-bottom: 0.5em; }
+        .markdown-body strong { font-weight: 700; color: #0f172a; }
+        
+        /* Tabel Modern Web Preview */
+        .markdown-body table { width: 100%; border-collapse: collapse; margin-bottom: 1.5em; border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 1px #e2e8f0; }
+        .markdown-body th { background-color: #f8fafc; font-weight: 600; text-align: center; color: #475569; padding: 12px; border-bottom: 2px solid #cbd5e1; }
+        .markdown-body td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; }
+        .markdown-body tr:last-child td { border-bottom: none; }
+        .markdown-body tr:nth-child(even) { background-color: #f8fafc; }
+        
+        /* Loading Spinner */
+        .loader {
+            border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6;
+            border-radius: 50%; width: 40px; height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div id="app-root">
+    <!-- Toast Notification -->
+    <div id="toast-container" class="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Login View -->
+    <div id="view-login" class="hidden w-full h-full flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-md p-8 rounded-3xl">
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <i class="ph ph-robot text-4xl text-blue-600"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-800">AI LKPD Admin</h1>
+                <p class="text-gray-500 mt-2">Masuk untuk membuat Lembar Kerja</p>
+            </div>
+            <form id="login-form" class="space-y-5">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input type="email" id="login-email" required class="glass-input w-full px-4 py-3 rounded-xl" placeholder="admin@sekolah.com">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                    <input type="password" id="login-password" required class="glass-input w-full px-4 py-3 rounded-xl" placeholder="••••••••">
+                </div>
+                <button type="submit" id="login-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
+                    <span>Masuk</span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Dashboard App -->
+    <div id="view-app" class="hidden app-layout">
+        
+        <!-- Sidebar Desktop -->
+        <div class="sidebar glass-panel z-10">
+            <div class="p-6 flex items-center gap-3 border-b border-white/40">
+                <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <i class="ph ph-robot text-xl text-white"></i>
+                </div>
+                <div>
+                    <h2 class="font-bold text-gray-800 leading-tight">AI LKPD</h2>
+                    <p class="text-xs text-gray-500">Generator System</p>
+                </div>
+            </div>
+            
+            <div class="flex-1 px-4 py-6 flex flex-col gap-2">
+                <div class="nav-item active" onclick="navigateTo('dashboard')" id="nav-dashboard-desktop">
+                    <i class="ph ph-squares-four text-xl"></i> <span>Dashboard</span>
+                </div>
+                <div class="nav-item" onclick="navigateTo('generator')" id="nav-generator-desktop">
+                    <i class="ph ph-magic-wand text-xl"></i> <span>Generator AI</span>
+                </div>
+                <div class="nav-item" onclick="navigateTo('library')" id="nav-library-desktop">
+                    <i class="ph ph-books text-xl"></i> <span>Pustaka LKPD</span>
+                </div>
+                <div class="nav-item" onclick="navigateTo('settings')" id="nav-settings-desktop">
+                    <i class="ph ph-gear text-xl"></i> <span>Pengaturan</span>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-white/40">
+                <button onclick="handleLogout()" class="w-full nav-item !text-red-500 hover:!bg-red-50">
+                    <i class="ph ph-sign-out text-xl"></i> <span>Keluar</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            
+            <!-- Halaman Dashboard -->
+            <div id="page-dashboard" class="page-section p-4 md:p-8">
+                <header class="mb-8 flex justify-between items-center">
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-bold text-gray-800">Halo, Guru! 👋</h1>
+                        <p class="text-gray-500 mt-1">Selamat datang di Sistem Pembuat LKPD berbasis AI.</p>
+                    </div>
+                </header>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                    <div class="glass-panel p-6 rounded-2xl flex items-center gap-4">
+                        <div class="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                            <i class="ph ph-files text-2xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-gray-500 text-sm">Total LKPD Dibuat</p>
+                            <h3 class="text-2xl font-bold text-gray-800" id="stat-total-lkpd">0</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="glass-panel rounded-2xl p-6">
+                    <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="ph ph-info"></i> Petunjuk Penggunaan</h3>
+                    <ul class="list-disc pl-5 text-gray-600 space-y-2 text-sm">
+                        <li>Buka menu <b>Pengaturan</b> terlebih dahulu untuk memasukkan API Key Gemini dan Profil Sekolah (untuk kop cetak).</li>
+                        <li>Gunakan menu <b>Generator AI</b> untuk membuat LKPD secara otomatis sesuai parameter yang dimasukkan.</li>
+                        <li>Klik ikon <b>Cetak</b> pada Pustaka LKPD untuk mencetak dokumen (Preview Print).</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Halaman Generator AI -->
+            <div id="page-generator" class="page-section hidden p-4 md:p-8 flex flex-col min-h-full">
+                <header class="mb-6">
+                    <h1 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                        <i class="ph ph-magic-wand text-blue-600"></i> AI LKPD Generator
+                    </h1>
+                    <p class="text-gray-500 text-sm mt-1">Lengkapi parameter pembelajaran untuk dianalisis oleh AI.</p>
+                </header>
+
+                <div class="grid grid-cols-1 xl:grid-cols-12 gap-6 flex-1">
+                    <!-- Form Input -->
+                    <div class="xl:col-span-5 glass-panel rounded-2xl p-6 h-fit">
+                        <form id="ai-generator-form" class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Fase</label>
+                                    <input type="text" id="ai-fase" required class="glass-input w-full px-3 py-2 rounded-xl text-sm" placeholder="Contoh: E">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Jenjang</label>
+                                    <input type="text" id="ai-jenjang" required class="glass-input w-full px-3 py-2 rounded-xl text-sm" placeholder="Contoh: SMA">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Kelas</label>
+                                    <input type="text" id="ai-kelas" required class="glass-input w-full px-3 py-2 rounded-xl text-sm" placeholder="Contoh: X">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Tahun Pelajaran</label>
+                                    <input type="text" id="ai-tahun" required class="glass-input w-full px-3 py-2 rounded-xl text-sm" placeholder="Contoh: 2023/2024">
+                                </div>
+                            </div>
+                            
+                            <!-- Penambahan Form Mata Pelajaran -->
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Mata Pelajaran</label>
+                                    <input type="text" id="ai-mapel" required class="glass-input w-full px-3 py-2 rounded-xl text-sm" placeholder="Contoh: Biologi">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Materi</label>
+                                    <input type="text" id="ai-materi" required class="glass-input w-full px-3 py-2 rounded-xl text-sm" placeholder="Contoh: Sistem Pencernaan">
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700 mb-1">Tujuan Pembelajaran</label>
+                                <textarea id="ai-tujuan" required rows="2" class="glass-input w-full px-3 py-2 rounded-xl text-sm" placeholder="Contoh: Siswa dapat menganalisis fungsi enzim..."></textarea>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Alokasi Waktu</label>
+                                    <input type="text" id="ai-waktu" required class="glass-input w-full px-3 py-2 rounded-xl text-sm" placeholder="Contoh: 2 x 45 Menit">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Keterkaitan Lintas Mapel</label>
+                                    <input type="text" id="ai-lintas" class="glass-input w-full px-3 py-2 rounded-xl text-sm" placeholder="(Opsional)">
+                                </div>
+                            </div>
+                            
+                            <button type="submit" id="btn-generate" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30">
+                                <i class="ph ph-sparkle text-lg"></i> <span>Generate LKPD</span>
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Output Preview Area -->
+                    <div class="xl:col-span-7 glass-panel rounded-2xl flex flex-col bg-white/80">
+                        <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-white/50 rounded-t-2xl">
+                            <h3 class="font-semibold text-gray-700 flex items-center gap-2"><i class="ph ph-eye"></i> Pratinjau Hasil</h3>
+                            <div class="flex gap-2">
+                                <button id="btn-print-preview" class="hidden px-4 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 text-sm font-medium rounded-lg flex items-center gap-2 transition" onclick="printPreviewFromGenerator()">
+                                    <i class="ph ph-printer"></i> Cetak
+                                </button>
+                                <button id="btn-save-lkpd" class="hidden px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-lg flex items-center gap-2 transition">
+                                    <i class="ph ph-floppy-disk"></i> Simpan
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex-1 p-6 overflow-y-auto relative min-h-[500px]">
+                            <!-- Loading State -->
+                            <div id="ai-loading" class="hidden absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-b-2xl">
+                                <div class="loader mb-4"></div>
+                                <p class="text-blue-600 font-medium animate-pulse">AI sedang merancang LKPD...</p>
+                                <p class="text-gray-400 text-xs mt-2">Membutuhkan waktu sekitar 10-15 detik.</p>
+                            </div>
+                            <!-- Empty State -->
+                            <div id="ai-empty-state" class="h-full flex flex-col items-center justify-center text-gray-400">
+                                <i class="ph ph-file-dashed text-6xl mb-3"></i>
+                                <p>Hasil generate akan muncul di sini</p>
+                            </div>
+                            <!-- Content Output -->
+                            <div id="ai-output-content" class="markdown-body hidden"></div>
+                            <!-- Hidden input -->
+                            <textarea id="raw-ai-output" class="hidden"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Halaman Pustaka LKPD -->
+            <div id="page-library" class="page-section hidden p-4 md:p-8">
+                <header class="mb-6 flex justify-between items-center">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-800">Pustaka LKPD</h1>
+                        <p class="text-gray-500 text-sm">Daftar Lembar Kerja yang telah Anda buat dan simpan.</p>
+                    </div>
+                    <button onclick="navigateTo('generator')" class="bg-blue-100 text-blue-600 px-4 py-2 rounded-xl font-medium text-sm hover:bg-blue-200 transition">
+                        + Buat Baru
+                    </button>
+                </header>
+
+                <div class="glass-panel rounded-2xl overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50/50 border-b border-gray-200">
+                                    <th class="p-4 font-medium text-sm text-gray-600">Judul / Mata Pelajaran</th>
+                                    <th class="p-4 font-medium text-sm text-gray-600">Kelas / Fase</th>
+                                    <th class="p-4 font-medium text-sm text-gray-600">Tanggal Dibuat</th>
+                                    <th class="p-4 font-medium text-sm text-gray-600 text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="library-table-body">
+                                <!-- Data dimuat via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Halaman Pengaturan -->
+            <div id="page-settings" class="page-section hidden p-4 md:p-8">
+                <header class="mb-6">
+                    <h1 class="text-2xl font-bold text-gray-800">Pengaturan</h1>
+                    <p class="text-gray-500 text-sm">Konfigurasi API Key AI dan Profil Sekolah untuk Cetak LKPD.</p>
+                </header>
+
+                <div class="max-w-3xl glass-panel rounded-2xl p-6">
+                    <form id="settings-form" class="space-y-6">
+                        
+                        <!-- Seksi API KEY -->
+                        <div class="bg-blue-50/50 p-5 rounded-xl border border-blue-100">
+                            <h3 class="font-bold text-gray-700 mb-2 flex items-center gap-2"><i class="ph ph-key text-blue-600"></i> API Key Gemini AI</h3>
+                            <p class="text-xs text-gray-500 mb-3">Dapatkan API Key gratis di <a href="https://aistudio.google.com/" target="_blank" class="font-bold text-blue-600 underline">Google AI Studio</a>. Disimpan secara lokal di browser.</p>
+                            <div class="relative">
+                                <input type="password" id="setting-gemini-key" class="glass-input w-full px-4 py-3 pr-12 rounded-xl font-mono text-sm" placeholder="AIzaSy...">
+                                <button type="button" onclick="togglePassword('setting-gemini-key')" class="absolute right-3 top-3 text-gray-400 hover:text-gray-600">
+                                    <i class="ph ph-eye text-xl"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Seksi Profil Sekolah & Guru -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="space-y-4">
+                                <h3 class="font-bold text-gray-700 border-b pb-2"><i class="ph ph-buildings"></i> Identitas Sekolah</h3>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Nama Sekolah</label>
+                                    <input type="text" id="setting-school-name" class="glass-input w-full px-3 py-2 rounded-xl text-sm" placeholder="Contoh: SMA Negeri 1 Bangsa">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Logo Sekolah (URL)</label>
+                                    <input type="url" id="setting-school-logo" class="glass-input w-full px-3 py-2 rounded-xl text-sm" placeholder="https://link-gambar-logo.png">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Alamat Sekolah</label>
+                                    <textarea id="setting-school-address" rows="2" class="glass-input w-full px-3 py-2 rounded-xl text-sm" placeholder="Jln. Pendidikan No.1, Kota..."></textarea>
+                                </div>
+                            </div>
+
+                            <div class="space-y-4">
+                                <h3 class="font-bold text-gray-700 border-b pb-2"><i class="ph ph-user-circle"></i> Identitas Guru</h3>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Nama Guru Lengkap</label>
+                                    <input type="text" id="setting-teacher-name" class="glass-input w-full px-3 py-2 rounded-xl text-sm" placeholder="Budi Santoso, S.Pd.">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">NIP</label>
+                                    <input type="text" id="setting-teacher-nip" class="glass-input w-full px-3 py-2 rounded-xl text-sm" placeholder="19800101 200501 1 001">
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="bg-gray-800 hover:bg-gray-900 text-white font-medium py-3 px-6 rounded-xl transition w-full md:w-auto">
+                            Simpan Pengaturan
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+        </div> <!-- End Main Content -->
+
+        <!-- Bottom Navigation Mobile -->
+        <div class="bottom-nav glass-panel rounded-t-3xl pb-2">
+            <div class="nav-item active flex-1 text-center" onclick="navigateTo('dashboard')" id="nav-dashboard-mobile">
+                <i class="ph ph-squares-four"></i> <span>Dash</span>
+            </div>
+            <div class="nav-item flex-1 text-center" onclick="navigateTo('generator')" id="nav-generator-mobile">
+                <i class="ph ph-magic-wand"></i> <span>Buat</span>
+            </div>
+            <div class="nav-item flex-1 text-center" onclick="navigateTo('library')" id="nav-library-mobile">
+                <i class="ph ph-books"></i> <span>Pustaka</span>
+            </div>
+            <div class="nav-item flex-1 text-center" onclick="navigateTo('settings')" id="nav-settings-mobile">
+                <i class="ph ph-gear"></i> <span>Setting</span>
+            </div>
+        </div>
+        
+    </div>
+</div>
+
+<!-- Module Import untuk Supabase -->
+<script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
+    // ==========================================
+    // KONFIGURASI APLIKASI
+    // ==========================================
+    const IS_PREVIEW = false; // Set FALSE jika sudah memasukkan URL dan KEY Supabase asli
+    
+    // PASTE SUPABASE URL & ANON KEY ANDA DI SINI
+    const SUPABASE_URL = "https://kxmwpzgcbxvidshcpabr.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4bXdwemdjYnh2aWRzaGNwYWJyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzMjI3NTEsImV4cCI6MjEwODg5ODc1MX0.m_rXOziuif37C1Y-eQWsRfnz7_MijSBuYJ6Yk9Q0I7g";
+
+    let supabase = null;
+    if (!IS_PREVIEW && SUPABASE_URL.includes('supabase.co')) {
+        supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+
+    let currentUser = null;
+    let localDB = { lkpd_documents: [] }; 
+
+    // ==========================================
+    // SISTEM NOTIFIKASI
+    // ==========================================
+    window.showToast = function(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        let icon = 'info'; let bgClass = 'bg-white border-l-4 border-blue-500'; let textClass = 'text-gray-800';
+        
+        if(type === 'success') { icon = 'check-circle'; bgClass = 'bg-green-50 border border-green-200'; textClass = 'text-green-800'; }
+        if(type === 'error') { icon = 'warning-circle'; bgClass = 'bg-red-50 border border-red-200'; textClass = 'text-red-800'; }
+
+        toast.className = `flex items-center gap-3 p-4 rounded-xl shadow-lg transform transition-all duration-300 translate-x-full opacity-0 ${bgClass} ${textClass} pointer-events-auto`;
+        toast.innerHTML = `<i class="ph ph-${icon} text-xl"></i><span class="font-medium text-sm">${message}</span>`;
+        container.appendChild(toast);
+        setTimeout(() => { toast.classList.remove('translate-x-full', 'opacity-0'); }, 10);
+        setTimeout(() => {
+            toast.classList.add('translate-x-full', 'opacity-0');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    // ==========================================
+    // AUTO SETUP DATABASE & AUTH
+    // ==========================================
+    async function autoSetupDatabase() {
+        if (IS_PREVIEW) {
+            localDB.lkpd_documents = [
+                { id: 'dummy123', title: 'LKPD: Sistem Pencernaan Manusia', subject: 'Biologi - Sistem Pencernaan Manusia', grade_level: 'Kelas X (Fase E)', content: '# Lembar Kerja Peserta Didik (LKPD)\n\n## A. Identitas\n- Mata Pelajaran: Biologi\n- Materi: Sistem Pencernaan\n\n## B. Tujuan Pembelajaran\nSiswa dapat mengidentifikasi enzim pencernaan.\n\n## C. Soal Latihan\n1. Apa fungsi dari enzim amilase di mulut?', created_at: new Date().toISOString() }
+            ];
+            currentUser = { id: 'dummy-admin-id', email: 'admin@preview.com' };
+            showApp();
+            return;
+        }
+
+        try {
+            const { data: { session }, error } = await supabase.auth.getSession();
+            if (session) { currentUser = session.user; showApp(); } 
+            else { showLogin(); }
+        } catch (err) {
+            showToast("Gagal terhubung ke Database.", "error");
+            showLogin();
+        }
+    }
+
+    function showLogin() {
+        document.getElementById('view-app').classList.add('hidden');
+        document.getElementById('view-login').classList.remove('hidden');
+    }
+
+    function showApp() {
+        document.getElementById('view-login').classList.add('hidden');
+        document.getElementById('view-app').classList.remove('hidden');
+        loadSettings();
+        navigateTo('dashboard');
+    }
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('login-email').value;
+        const pass = document.getElementById('login-password').value;
+        const btn = document.getElementById('login-btn');
+        const ogText = btn.innerHTML;
+        
+        btn.innerHTML = `<div class="loader w-5 h-5 border-[2px]"></div>`; btn.disabled = true;
+
+        if (IS_PREVIEW) {
+            setTimeout(() => { currentUser = { id: 'dummy-id', email: email }; showApp(); btn.innerHTML = ogText; btn.disabled = false; }, 800);
+            return;
+        }
+        const { data, error } = await supabase.auth.signInWithPassword({ email: email, password: pass });
+        btn.innerHTML = ogText; btn.disabled = false;
+
+        if (error) { showToast(error.message, 'error'); } 
+        else { currentUser = data.user; showToast('Login berhasil!', 'success'); showApp(); }
+    });
+
+    window.handleLogout = async () => {
+        if (!IS_PREVIEW) await supabase.auth.signOut();
+        currentUser = null; showToast('Berhasil keluar', 'info'); showLogin();
+    };
+
+    window.navigateTo = (pageId) => {
+        document.querySelectorAll('.page-section').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        document.getElementById(`page-${pageId}`).classList.remove('hidden');
+        if(document.getElementById(`nav-${pageId}-desktop`)) document.getElementById(`nav-${pageId}-desktop`).classList.add('active');
+        if(document.getElementById(`nav-${pageId}-mobile`)) document.getElementById(`nav-${pageId}-mobile`).classList.add('active');
+
+        if(pageId === 'dashboard') fetchDashboardStats();
+        if(pageId === 'library') fetchLKPDLibrary();
+    };
+
+    // ==========================================
+    // SETTINGS (LOCAL STORAGE)
+    // ==========================================
+    window.togglePassword = (id) => {
+        const input = document.getElementById(id);
+        input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    function loadSettings() {
+        document.getElementById('setting-gemini-key').value = localStorage.getItem('GEMINI_API_KEY') || '';
+        document.getElementById('setting-school-name').value = localStorage.getItem('LKPD_SCHOOL_NAME') || '';
+        document.getElementById('setting-school-logo').value = localStorage.getItem('LKPD_SCHOOL_LOGO') || '';
+        document.getElementById('setting-school-address').value = localStorage.getItem('LKPD_SCHOOL_ADDRESS') || '';
+        document.getElementById('setting-teacher-name').value = localStorage.getItem('LKPD_TEACHER_NAME') || '';
+        document.getElementById('setting-teacher-nip').value = localStorage.getItem('LKPD_TEACHER_NIP') || '';
+    }
+
+    document.getElementById('settings-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        localStorage.setItem('GEMINI_API_KEY', document.getElementById('setting-gemini-key').value);
+        localStorage.setItem('LKPD_SCHOOL_NAME', document.getElementById('setting-school-name').value);
+        localStorage.setItem('LKPD_SCHOOL_LOGO', document.getElementById('setting-school-logo').value);
+        localStorage.setItem('LKPD_SCHOOL_ADDRESS', document.getElementById('setting-school-address').value);
+        localStorage.setItem('LKPD_TEACHER_NAME', document.getElementById('setting-teacher-name').value);
+        localStorage.setItem('LKPD_TEACHER_NIP', document.getElementById('setting-teacher-nip').value);
+        showToast('Pengaturan berhasil disimpan', 'success');
+    });
+
+    // ==========================================
+    // AI GENERATOR
+    // ==========================================
+    document.getElementById('ai-generator-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const apiKey = localStorage.getItem('GEMINI_API_KEY');
+        if (!apiKey) {
+            showToast('API Key Gemini belum diatur. Silakan ke menu Pengaturan.', 'error');
+            navigateTo('settings'); return;
+        }
+
+        // Ambil Data Form
+        const fase = document.getElementById('ai-fase').value;
+        const jenjang = document.getElementById('ai-jenjang').value;
+        const kelas = document.getElementById('ai-kelas').value;
+        const tahun = document.getElementById('ai-tahun').value;
+        const mapel = document.getElementById('ai-mapel').value; // Penambahan variabel Mapel
+        const materi = document.getElementById('ai-materi').value;
+        const tujuan = document.getElementById('ai-tujuan').value;
+        const waktu = document.getElementById('ai-waktu').value;
+        const lintas = document.getElementById('ai-lintas').value;
+
+        const schoolName = localStorage.getItem('LKPD_SCHOOL_NAME') || 'Nama Sekolah';
+
+        // UI State
+        const btnGen = document.getElementById('btn-generate');
+        const loader = document.getElementById('ai-loading');
+        const emptyState = document.getElementById('ai-empty-state');
+        const outputContent = document.getElementById('ai-output-content');
+        const btnSave = document.getElementById('btn-save-lkpd');
+        const btnPrint = document.getElementById('btn-print-preview');
+        
+        btnGen.disabled = true; btnGen.style.opacity = '0.7';
+        loader.classList.remove('hidden'); emptyState.classList.add('hidden');
+        outputContent.classList.add('hidden'); btnSave.classList.add('hidden'); btnPrint.classList.add('hidden');
+
+        // Meracik Prompt
+        const systemInstruction = "Anda adalah Ahli Kurikulum Pendidikan dan Guru Profesional. Buatlah Lembar Kerja Peserta Didik (LKPD) yang komprehensif, modern, menarik, dan menumbuhkan nalar kritis (HOTS) sesuai prinsip Kurikulum Merdeka. JAWABAN HARUS MURNI FORMAT MARKDOWN TANPA BLOCK CODE (```markdown).";
+        
+        // CATATAN PENTING: Perintah tambahan agar AI menggunakan simbol $ untuk matematika agar dapat dirender oleh KaTeX
+        const userPrompt = `Buatkan draf isi LKPD (Lembar Kerja Peserta Didik) dengan detail berikut:
+- Sekolah: ${schoolName}
+- Fase: ${fase}
+- Jenjang: ${jenjang}
+- Kelas: ${kelas}
+- Tahun Pelajaran: ${tahun}
+- Mata Pelajaran: ${mapel}
+- Materi: ${materi}
+- Tujuan Pembelajaran: ${tujuan}
+- Alokasi Waktu: ${waktu}
+- Keterkaitan Lintas Mapel: ${lintas || 'Tidak ada'}
+
+Struktur LKPD wajib memuat:
+1. Identitas LKPD (Judul besar (H1), Identitas Mapel)
+2. Kolom Identitas Siswa (Nama, No. Absen, Kelompok) - gunakan titik-titik untuk ruang pengisian.
+3. Tujuan Pembelajaran (sesuai input).
+4. Stimulus / Pengantar Materi Singkat.
+5. Alat/Bahan (Opsional, jika relevan).
+6. Langkah-Langkah / Aktivitas.
+7. Soal Latihan / Evaluasi Diri (Minimal 3-5 soal, berjenjang dari LOTS hingga HOTS).
+8. Refleksi Pembelajaran.
+
+ATURAN PENTING UNTUK RUMUS MATEMATIKA/SAINS: Jika terdapat rumus, pecahan, akar, atau notasi ilmiah, WAJIB gunakan sintaks LaTeX. Bungkus rumus inline dalam simbol $ (contoh: $x=2$) dan rumus blok dalam simbol $$ (contoh: $$\\frac{1}{2}$$) agar sistem aplikasi kami dapat merendernya menjadi visual yang estetik.`;
+
+        const combinedPrompt = `${systemInstruction}\n\n${userPrompt}`;
+
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`;
+        
+        const safePayload = {
+             contents: [{ parts: [{ text: combinedPrompt }] }]
+        };
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(safePayload)
+            });
+
+            const result = await response.json();
+            
+            if (response.ok && result.candidates && result.candidates[0].content) {
+                let generatedText = result.candidates[0].content.parts[0].text;
+                // Bersihkan tag pembungkus Markdown
+                generatedText = generatedText.replace(/^```markdown/im, '').replace(/^```/im, '').replace(/```$/im, '');
+                
+                // Konversi Markdown ke HTML
+                outputContent.innerHTML = marked.parse(generatedText);
+                
+                // TAMBAHAN: Eksekusi KaTeX untuk merender simbol $ menjadi rumus visual yang estetik
+                if(window.renderMathInElement) {
+                    renderMathInElement(outputContent, {
+                        delimiters: [
+                            {left: '$$', right: '$$', display: true},
+                            {left: '$', right: '$', display: false}
+                        ],
+                        throwOnError: false
+                    });
+                }
+                
+                document.getElementById('raw-ai-output').value = generatedText;
+                
+                loader.classList.add('hidden');
+                outputContent.classList.remove('hidden');
+                btnSave.classList.remove('hidden');
+                btnPrint.classList.remove('hidden');
+                showToast('LKPD Berhasil digenerate!', 'success');
+            } else {
+                throw new Error(result.error?.message || "Gagal mendapatkan respon AI. Silakan periksa API Key atau Model.");
+            }
+        } catch (error) {
+            console.error("AI Error:", error);
+            loader.classList.add('hidden');
+            emptyState.classList.remove('hidden');
+            showToast(`Error AI: ${error.message}`, 'error');
+        } finally {
+            btnGen.disabled = false; btnGen.style.opacity = '1';
+        }
+    });
+
+    // ==========================================
+    // SAVE TO DATABASE
+    // ==========================================
+    document.getElementById('btn-save-lkpd').addEventListener('click', async () => {
+        const mapel = document.getElementById('ai-mapel').value;
+        const materi = document.getElementById('ai-materi').value;
+        const kelas = document.getElementById('ai-kelas').value;
+        const fase = document.getElementById('ai-fase').value;
+        
+        // Memanfaatkan mapel agar subject di database terlihat lebih jelas
+        const dbTitle = `LKPD: ${materi.substring(0, 40)}`;
+        const dbSubject = `${mapel} - ${materi}`; 
+        const dbGrade = `Kelas ${kelas} (Fase ${fase})`;
+        const dbContent = document.getElementById('raw-ai-output').value;
+
+        const btnSave = document.getElementById('btn-save-lkpd');
+        btnSave.disabled = true; btnSave.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Menyimpan...';
+
+        if (IS_PREVIEW) {
+            setTimeout(() => {
+                localDB.lkpd_documents.unshift({
+                    id: Date.now().toString(),
+                    title: dbTitle, subject: dbSubject, grade_level: dbGrade, content: dbContent,
+                    created_at: new Date().toISOString()
+                });
+                showToast('LKPD Disimpan (Preview)', 'success');
+                btnSave.disabled = false; btnSave.innerHTML = '<i class="ph ph-check"></i> Tersimpan';
+                btnSave.classList.replace('bg-green-500', 'bg-gray-500');
+            }, 800);
+            return;
+        }
+
+        const { error } = await supabase.from('lkpd_documents').insert([{
+            title: dbTitle, subject: dbSubject, grade_level: dbGrade, content: dbContent,
+            created_by: currentUser.id
+        }]);
+
+        if (error) {
+            showToast(`Gagal menyimpan: ${error.message}`, 'error');
+            btnSave.disabled = false; btnSave.innerHTML = '<i class="ph ph-floppy-disk"></i> Simpan';
+        } else {
+            showToast('LKPD berhasil disimpan!', 'success');
+            btnSave.disabled = true; btnSave.innerHTML = '<i class="ph ph-check"></i> Tersimpan';
+            btnSave.classList.replace('bg-green-500', 'bg-gray-500');
+        }
+    });
+
+    // ==========================================
+    // PUSTAKA & VIEW LOGIC
+    // ==========================================
+    async function fetchDashboardStats() {
+        if(!currentUser) return;
+        let count = 0;
+        if (IS_PREVIEW) { count = localDB.lkpd_documents.length; } 
+        else {
+            const { count: dbCount, error } = await supabase.from('lkpd_documents').select('*', { count: 'exact', head: true }).eq('created_by', currentUser.id);
+            if (!error) count = dbCount;
+        }
+        document.getElementById('stat-total-lkpd').innerText = count;
+    }
+
+    window.lkpdDataCache = []; 
+    
+    async function fetchLKPDLibrary() {
+        const tbody = document.getElementById('library-table-body');
+        tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center"><div class="loader mx-auto w-6 h-6 border-[3px]"></div></td></tr>`;
+        
+        let data = [];
+        if (IS_PREVIEW) { data = localDB.lkpd_documents; } 
+        else {
+            const { data: dbData, error } = await supabase.from('lkpd_documents').select('*').eq('created_by', currentUser.id).order('created_at', { ascending: false });
+            if (!error) data = dbData || [];
+        }
+
+        window.lkpdDataCache = data;
+
+        if (data.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-gray-400">Belum ada LKPD.</td></tr>`; return;
+        }
+
+        tbody.innerHTML = data.map(item => `
+            <tr class="border-b border-gray-100 hover:bg-gray-50 transition">
+                <td class="p-4">
+                    <p class="font-semibold text-gray-800">${item.title}</p>
+                    <span class="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md mt-1 inline-block">${item.subject}</span>
+                </td>
+                <td class="p-4 text-sm text-gray-600">${item.grade_level}</td>
+                <td class="p-4 text-sm text-gray-500">${new Date(item.created_at).toLocaleDateString('id-ID')}</td>
+                <td class="p-4 text-center">
+                    <div class="flex justify-center gap-2">
+                        <!-- Tombol Cetak dari Library yang langsung ke Print Preview -->
+                        <button onclick="printLKPDFromLibrary('${item.id}')" class="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition font-medium flex items-center gap-1 text-sm" title="Cetak LKPD">
+                            <i class="ph ph-printer text-lg"></i> Cetak
+                        </button>
+                        <button onclick="deleteLKPD('${item.id}')" class="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Hapus">
+                            <i class="ph ph-trash text-lg"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+
+    // ==========================================
+    // LOGIC CETAK (PRINT PREVIEW BARU & MODERN)
+    // ==========================================
+    window.printPreviewFromGenerator = () => {
+        const rawMarkdown = document.getElementById('raw-ai-output').value;
+        if(rawMarkdown) {
+            const htmlContent = marked.parse(rawMarkdown);
+            openPrintWindow(htmlContent);
+        }
+    }
+
+    window.printLKPDFromLibrary = (id) => {
+        try {
+            const item = window.lkpdDataCache.find(x => x.id === id);
+            if(!item) {
+                showToast('Data LKPD tidak ditemukan.', 'error'); return;
+            }
+            const htmlContent = marked.parse(item.content);
+            openPrintWindow(htmlContent);
+        } catch(e) {
+            console.error("Gagal membuka LKPD untuk dicetak: ", e);
+            showToast('Terjadi kesalahan saat memuat pratinjau cetak.', 'error');
+        }
+    }
+
+    function openPrintWindow(contentHTML) {
+        // Ambil data pengaturan untuk Kop Surat
+        const schoolName = localStorage.getItem('LKPD_SCHOOL_NAME') || 'NAMA SEKOLAH';
+        const logoUrl = localStorage.getItem('LKPD_SCHOOL_LOGO') || '';
+        const address = localStorage.getItem('LKPD_SCHOOL_ADDRESS') || 'Alamat Sekolah';
+        const teacherName = localStorage.getItem('LKPD_TEACHER_NAME') || 'Nama Guru';
+        const nip = localStorage.getItem('LKPD_TEACHER_NIP') || '-';
+        
+        // Buka Tab/Jendela Baru
+        const printWindow = window.open('', '_blank');
+        if(!printWindow) {
+            showToast('Pop-up terblokir. Izinkan pop-up untuk membuka jendela cetak.', 'error');
+            return;
+        }
+
+        // Tulis HTML untuk print document (Desain Modern)
+        // TAMBAHAN: Script KaTeX dimasukkan ke dalam halaman print agar rumus ikut ter-render
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html lang="id">
+            <head>
+                <title>Cetak LKPD</title>
+                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+                <style>
+                    /* Reset & Print Styles */
+                    @page { margin: 20mm; size: A4; }
+                    body { 
+                        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+                        color: #1e293b; line-height: 1.6; margin: 0; padding: 20px; font-size: 11.5pt; 
+                        max-width: 800px; margin: auto; background-color: #fff;
+                    }
+                    
+                    /* Kop Surat Modern */
+                    .kop-surat { display: flex; align-items: center; justify-content: center; border-bottom: 4px double #1e3a8a; padding-bottom: 15px; margin-bottom: 30px; gap: 25px; text-align: center; }
+                    .kop-logo { width: 90px; height: auto; object-fit: contain; }
+                    .kop-teks { flex: 1; }
+                    .kop-teks h1 { margin: 0; font-size: 18pt; text-transform: uppercase; font-weight: 800; color: #0f172a; letter-spacing: 0.5px; }
+                    .kop-teks p { margin: 6px 0 0 0; font-size: 11pt; color: #475569; }
+                    
+                    /* Markdown Body Typography (Modern Print) */
+                    .content { color: #0f172a; }
+                    .content h1 { text-align: center; font-size: 16pt; font-weight: 800; color: #1e3a8a; text-transform: uppercase; margin-bottom: 25px; }
+                    .content h2 { font-size: 13pt; font-weight: 700; color: #2563eb; border-left: 4px solid #2563eb; padding-left: 10px; margin-top: 25px; margin-bottom: 12px; background: #eff6ff; padding-block: 4px; border-radius: 0 4px 4px 0;}
+                    .content h3 { font-size: 12pt; font-weight: bold; margin-top: 15px; color: #1e293b; }
+                    .content p { margin-bottom: 12px; text-align: justify; }
+                    .content ul, .content ol { margin-left: 20px; margin-bottom: 15px; }
+                    
+                    /* Tabel Estetik Modern */
+                    .content table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border-radius: 6px; overflow: hidden; border: 1px solid #cbd5e1; }
+                    .content th { background-color: #f1f5f9; font-weight: 600; text-align: center; color: #334155; border: 1px solid #cbd5e1; padding: 10px; }
+                    .content td { border: 1px solid #cbd5e1; padding: 10px; }
+                    .content tr:nth-child(even) { background-color: #f8fafc; }
+                    
+                    /* Footer Tanda Tangan */
+                    .footer-ttd { width: 100%; margin-top: 60px; display: flex; justify-content: flex-end; }
+                    .ttd-box { text-align: center; width: 250px; color: #1e293b; }
+                    .ttd-box .tanggal { margin-bottom: 5px; }
+                    .ttd-box .nama-guru { font-weight: bold; text-decoration: underline; margin-top: 70px; margin-bottom: 2px;}
+                    
+                    /* Print Button Area */
+                    .no-print { text-align: center; margin-bottom: 30px; padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
+                    .no-print button { background: #2563eb; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 15px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2); transition: all 0.2s;}
+                    .no-print button:hover { background: #1d4ed8; transform: translateY(-1px); }
+
+                    @media print {
+                        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; padding: 0; max-width: none; }
+                        .no-print { display: none !important; }
+                        /* Memastikan warna bg di print jika diizinkan browser */
+                        .content h2 { background-color: #eff6ff !important; }
+                        .content th { background-color: #f1f5f9 !important; }
+                        .content tr:nth-child(even) { background-color: #f8fafc !important; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="no-print">
+                    <button onclick="window.print()">🖨️ Cetak LKPD Sekarang</button>
+                    <p style="font-size: 13px; margin-top: 10px; color: #64748b; font-family: sans-serif;">Tekan tombol di atas atau tekan Ctrl+P / Cmd+P pada keyboard Anda.</p>
+                </div>
+
+                <div class="kop-surat">
+                    ${logoUrl ? `<img src="${logoUrl}" class="kop-logo" alt="Logo">` : ''}
+                    <div class="kop-teks">
+                        <h1>${schoolName}</h1>
+                        <p>${address}</p>
+                    </div>
+                </div>
+                
+                <div class="content" id="print-content">
+                    ${contentHTML}
+                </div>
+
+                <div class="footer-ttd">
+                    <div class="ttd-box">
+                        <div class="tanggal">................, .........................</div>
+                        <div>Mengetahui,<br>Guru Mata Pelajaran</div>
+                        <div class="nama-guru">${teacherName}</div>
+                        <div>NIP. ${nip}</div>
+                    </div>
+                </div>
+
+                <!-- Script KaTeX untuk halaman print -->
+                <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"><\/script>
+                <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"><\/script>
+                <script>
+                    document.addEventListener("DOMContentLoaded", function() {
+                        renderMathInElement(document.getElementById("print-content"), {
+                            delimiters: [
+                                {left: '$$', right: '$$', display: true},
+                                {left: '$', right: '$', display: false}
+                            ],
+                            throwOnError: false
+                        });
+                    });
+                <\/script>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+    }
+
+    window.deleteLKPD = async (id) => {
+        if(!confirm("Yakin ingin menghapus LKPD ini?")) return;
+
+        showToast('Sedang menghapus...', 'info');
+        if (IS_PREVIEW) {
+            localDB.lkpd_documents = localDB.lkpd_documents.filter(x => x.id !== id);
+            showToast('LKPD Dihapus (Preview)', 'success'); fetchLKPDLibrary(); fetchDashboardStats(); return;
+        }
+        const { error } = await supabase.from('lkpd_documents').delete().eq('id', id);
+        if (error) { showToast('Gagal menghapus: ' + error.message, 'error'); } 
+        else { showToast('LKPD berhasil dihapus', 'success'); fetchLKPDLibrary(); fetchDashboardStats(); }
+    }
+
+    // ==========================================
+    // PWA SERVICE WORKER
+    // ==========================================
+    const swCode = `
+        const CACHE_NAME = 'ai-lkpd-cache-v2';
+        const urlsToCache = [ '/', 'https://cdn.tailwindcss.com', 'https://unpkg.com/@phosphor-icons/web', 'https://cdn.jsdelivr.net/npm/marked/marked.min.js' ];
+        self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))); });
+        self.addEventListener('fetch', event => { event.respondWith(caches.match(event.request).then(response => response || fetch(event.request))); });
+    `;
+    const swBlob = new Blob([swCode], {type: 'application/javascript'});
+    const swUrl = URL.createObjectURL(swBlob);
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => { navigator.serviceWorker.register(swUrl).catch(err => console.error(err)); });
+    }
+
+    // Eksekusi Awal
+    window.addEventListener('DOMContentLoaded', autoSetupDatabase);
+</script>
+</body>
+</html>
+
